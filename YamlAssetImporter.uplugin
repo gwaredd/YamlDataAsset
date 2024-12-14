@@ -1,0 +1,25 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "YamlAssetImporter",
+	"Description": "Converts Yaml files to UCustomAsset files",
+	"Category": "Other",
+	"CreatedBy": "Gwaredd",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "YamlAssetImporterEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
+		}
+
+	]
+}
