@@ -133,26 +133,29 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 
             else if( auto SetField = CastField<FSetProperty>( Property ) )
             {
-                // create empty set
+                // empty the set
 
                 FScriptSetHelper SetHelper( SetField, Address );
                 SetHelper.EmptyElements();
 
-                // BUG: this can create duplicate items and therefore is an invalidate set
-                // solution may be to create a dummy entry, populate that and use that as a way to
-                // check existence, then remove it at the end. Bit pants but should theorectically work!
+                // create a container for a temporary element
+
+                auto TempElement = (uint8*) FMemory_Alloca_Aligned( SetHelper.ElementProp->GetSize(), SetHelper.ElementProp->GetMinAlignment() );
+                FMemory::Memzero( TempElement, SetHelper.ElementProp->GetSize() );
 
                 // add items
 
                 for( std::size_t Index = 0; Index < Node.size(); ++Index )
                 {
-                    auto ElementIndex = SetHelper.AddDefaultValue_Invalid_NeedsRehash();
-                    auto ElementAddr  = SetHelper.GetElementPtr( ElementIndex );
+                    // parse value into the temporary element
+                    SetProperty( TempElement, SetField->ElementProp, Node[ Index ] );
 
-                    SetProperty( ElementAddr, SetField->ElementProp, Node[ Index ] );
+                    // add temporary element into the set (will only add if does not already exist)
+                    SetHelper.AddElement( TempElement );
                 }
 
-                SetHelper.Rehash();
+                // free temporary element
+                SetHelper.ElementProp->DestroyValue_InContainer( TempElement );
             }
         }
         break;
