@@ -11,25 +11,13 @@
 
 //-------------------------------------------------------------------------------------------------
 
-// all these can be set by text
-
-static constexpr uint64 ScalarFlags =
+static constexpr uint64 ScalarTypes =
     CASTCLASS_FBoolProperty |
-    CASTCLASS_FByteProperty |
-    CASTCLASS_FDoubleProperty |
     CASTCLASS_FEnumProperty |
-    CASTCLASS_FFloatProperty |
-    CASTCLASS_FInt16Property |
-    CASTCLASS_FInt64Property |
-    CASTCLASS_FInt8Property |
-    CASTCLASS_FIntProperty |
-    CASTCLASS_FNameProperty |
     CASTCLASS_FNumericProperty |
+    CASTCLASS_FNameProperty |
     CASTCLASS_FStrProperty |
     CASTCLASS_FTextProperty |
-    CASTCLASS_FUInt16Property |
-    CASTCLASS_FUInt32Property |
-    CASTCLASS_FUInt64Property |
     CASTCLASS_FLargeWorldCoordinatesRealProperty |
     CASTCLASS_FClassProperty |
     CASTCLASS_FObjectProperty |
@@ -42,12 +30,12 @@ static uint64 GetSupportedPropertyTypeFlags( YAML::NodeType::value Type )
 {
     switch( Type )
     {
-        default:                        return 0;
-        case YAML::NodeType::Undefined: return ScalarFlags | CASTCLASS_FArrayProperty | CASTCLASS_FMapProperty | CASTCLASS_FSetProperty;
-        case YAML::NodeType::Null:      return ScalarFlags | CASTCLASS_FArrayProperty | CASTCLASS_FMapProperty | CASTCLASS_FSetProperty;
-        case YAML::NodeType::Scalar:    return ScalarFlags;
+        case YAML::NodeType::Undefined:
+        case YAML::NodeType::Null:      return CASTCLASS_AllFlags;
+        case YAML::NodeType::Scalar:    return ScalarTypes;
         case YAML::NodeType::Sequence:  return CASTCLASS_FArrayProperty | CASTCLASS_FSetProperty;
         case YAML::NodeType::Map:       return CASTCLASS_FStructProperty | CASTCLASS_FMapProperty;
+        default:                        return 0;
     }
 }
 
@@ -67,11 +55,11 @@ static const char* GetNodeTypeName( YAML::NodeType::value Type )
 
 //-------------------------------------------------------------------------------------------------
 
-static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node )
+static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, EPropertyPointerType PointerType )
 {
     auto NodeType = Node.Type();
 
-    // check we can convert it
+    // check we can convert the YAML::Node type to the given FProperty
 
     if( ( Property->GetCastFlags() & GetSupportedPropertyTypeFlags( NodeType ) ) == 0 )
     {
@@ -84,47 +72,38 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node )
         return false;
     }
 
-    // convert
+    // handle YAML::Node
 
     switch( NodeType )
     {
-        // clear property
+        // null: clear property
 
         case YAML::NodeType::Undefined:
         case YAML::NodeType::Null:
         {
-            auto Memory = Property->ContainerPtrToValuePtr<uint8>( Container );
-
-            if( auto ArrayProperty = CastField<FArrayProperty>( Property ) )
-            {
-                FScriptArrayHelper( ArrayProperty, Memory ).EmptyValues();
-            }
-            else if( auto MapProperty = CastField<FMapProperty>( Property ) )
-            {
-                FScriptMapHelper( MapProperty, Memory ).EmptyValues();
-            }
-            else if( auto SetProperty = CastField<FSetProperty>( Property ) )
-            {
-                FScriptSetHelper( SetProperty, Memory ).EmptyElements();
-            }
-            else
-            {
-                Property->ClearValue_InContainer( Container );
-            }
+            Property->ClearValue_InContainer( Container );
         }
         break;
 
 
-        // set property by string
+        // scalar value: set property by string
 
         case YAML::NodeType::Scalar:
         {
-            auto Value = Node.as<std::string>();
-            Property->ImportText_InContainer( StringCast<TCHAR>( Value.c_str() ).Get(), Container, nullptr, PPF_None );
+            auto Value = StringCast<TCHAR>( Node.as<std::string>().c_str() ).Get();
+
+            if( PointerType == EPropertyPointerType::Container )
+            {
+                Property->ImportText_InContainer( Value, Container, nullptr, PPF_None );
+            }
+            else
+            {
+                Property->ImportText_Direct( Value, Container, nullptr, PPF_None );
+            }
         }
         break;
 
-        // array types
+        // array types: TArray or a TSet
 
         case YAML::NodeType::Sequence:
         {
@@ -141,39 +120,41 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node )
                     auto ElementNode = Node[ Index ];
                     auto ElementMemory = ArrayHelper.GetElementPtr( Index );
 
-                    SetProperty( ElementMemory, ArrayProperty->Inner, ElementNode );
+                    SetProperty( ElementMemory, ArrayProperty->Inner, ElementNode, EPropertyPointerType::Container );
                 }
             }
             else if( auto SetPropertyPtr = CastField<FSetProperty>( Property ) )
             {
-                //FScriptSetHelper SetHelper( SetPropertyPtr, Memory );
-                //SetHelper.EmptyElements();
+                FScriptSetHelper SetHelper( SetPropertyPtr, Memory );
+                SetHelper.EmptyElements();
 
-                //auto ElementProperty = SetHelper.GetElementProperty();
+                auto ElementProperty = SetHelper.GetElementProperty();
 
-                //for( std::size_t Index = 0; Index < Node.size(); ++Index )
-                //{
-                //    auto ElementIndex = SetHelper.AddDefaultValue_Invalid_NeedsRehash();
-                //    auto Addr = SetHelper.GetElementPtr( ElementIndex );
-                //    //SetProperty( Addr, ElementProperty, Node[ Index ] );
-                //}
+                for( std::size_t Index = 0; Index < Node.size(); ++Index )
+                {
+                    auto ElementIndex = SetHelper.AddDefaultValue_Invalid_NeedsRehash();
+                    auto Addr = SetHelper.GetElementPtr( ElementIndex );
+                    SetProperty( Addr, ElementProperty, Node[ Index ], EPropertyPointerType::Direct );
+                }
 
-                //SetHelper.Rehash();
+                SetHelper.Rehash();
             }
         }
         break;
 
-        // map types
+
+        // object types - so either a struct or a TMap
 
         case YAML::NodeType::Map:
         {
             if( auto StructProperty = CastField<FStructProperty>( Property ) )
             {
                 auto StructClass = StructProperty->Struct;
+                auto Addr        = StructProperty->ContainerPtrToValuePtr<uint8>( Container );
 
                 for( const auto& Child : Node )
                 {
-                    auto  Key = FName( Child.first.as<std::string>().c_str() );
+                    auto  Key   = FName ( Child.first.as<std::string>().c_str() );
                     auto  Field = StructClass->FindPropertyByName( Key );
 
                     if( !Field )
@@ -182,7 +163,7 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node )
                         continue;
                     }
 
-                    SetProperty( Container, Field, Child.second );
+                    SetProperty( Addr, Field, Child.second, PointerType );
                 }
             }
             else if( auto MapProperty = CastField<FMapProperty>( Property ) )
@@ -190,16 +171,13 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node )
                 auto Memory = Property->ContainerPtrToValuePtr<uint8>( Container );
                 FScriptMapHelper MapHelper( MapProperty, Memory );
 
-                auto KeyProperty   = MapHelper.GetKeyProperty();
-                auto ValueProperty = MapHelper.GetValueProperty();
-
                 MapHelper.EmptyValues();
 
                 for( const auto& Child : Node )
                 {
                     auto Index = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
-                    SetProperty( MapHelper.GetKeyPtr( Index ), KeyProperty, Child.first );
-                    SetProperty( MapHelper.GetValuePtr( Index ), ValueProperty, Child.second );
+                    SetProperty( MapHelper.GetKeyPtr( Index ), MapProperty->KeyProp, Child.first, EPropertyPointerType::Direct );
+                    SetProperty( MapHelper.GetValuePtr( Index ), MapProperty->ValueProp, Child.second, EPropertyPointerType::Direct );
                 }
 
                 MapHelper.Rehash();
@@ -218,7 +196,7 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node )
 
 //-------------------------------------------------------------------------------------------------
 
-static void ProcessObject( UObject* Object, YAML::Node Node )
+static UObject* ProcessObject( UObject* Object, YAML::Node Node )
 {
     auto Class = Object->GetClass();
 
@@ -233,8 +211,10 @@ static void ProcessObject( UObject* Object, YAML::Node Node )
             continue;
         }
 
-        SetProperty( Object, Property, Child.second );
+        SetProperty( Object, Property, Child.second, EPropertyPointerType::Container );
     }
+
+    return Object;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -387,6 +367,8 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
         return nullptr;
     }
 
+    // parse YAML
+
     YAML::Node Node;
 
     try
@@ -416,9 +398,9 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
         return nullptr;
     }
 
-    ProcessObject( Asset, Node );
+    // fill fields and return asset
 
-    return Asset;
+    return ProcessObject( Asset, Node );
 }
 
 
