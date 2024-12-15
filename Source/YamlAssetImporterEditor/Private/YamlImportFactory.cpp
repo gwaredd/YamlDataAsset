@@ -140,22 +140,23 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 
                 // create a container for a temporary element
 
-                auto TempElement = (uint8*) FMemory_Alloca_Aligned( SetHelper.ElementProp->GetSize(), SetHelper.ElementProp->GetMinAlignment() );
-                FMemory::Memzero( TempElement, SetHelper.ElementProp->GetSize() );
+                auto ElementProp = SetHelper.ElementProp;
+                auto TempElement = (uint8*) FMemory_Alloca_Aligned( ElementProp->GetSize(), ElementProp->GetMinAlignment() );
+                FMemory::Memzero( TempElement, ElementProp->GetSize() );
 
                 // add items
 
                 for( std::size_t Index = 0; Index < Node.size(); ++Index )
                 {
                     // parse value into the temporary element
-                    SetProperty( TempElement, SetField->ElementProp, Node[ Index ] );
+                    SetProperty( TempElement, ElementProp, Node[ Index ] );
 
                     // add temporary element into the set (will only add if does not already exist)
                     SetHelper.AddElement( TempElement );
                 }
 
                 // free temporary element
-                SetHelper.ElementProp->DestroyValue_InContainer( TempElement );
+                ElementProp->DestroyValue_InContainer( TempElement );
             }
         }
         break;
@@ -416,8 +417,8 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
 
     try
     {
-        auto Buffer = StringCast<UTF8CHAR>( *FileContents, FileContents.Len() ); // yamp-cpp requires utf-8
-        Doc = YAML::Load( (const char*) Buffer.Get() );
+        std::string Buffer = reinterpret_cast<const char*>( StringCast<UTF8CHAR>( FileContents.GetCharArray().GetData() ).Get() );
+        Doc = YAML::Load( Buffer );
     }
     catch( ... )
     {

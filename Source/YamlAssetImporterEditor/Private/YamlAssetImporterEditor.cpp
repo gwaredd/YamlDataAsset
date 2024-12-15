@@ -1,3 +1,5 @@
+// Copyright (C) 2024 Gwaredd Mountain - All Rights Reserved.
+
 #include "YamlAssetImporterEditor.h"
 
 DEFINE_LOG_CATEGORY( LogYamlAssetImporter );
