@@ -142,13 +142,13 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 
                 auto ElementProp = SetHelper.ElementProp;
                 auto TempElement = (uint8*) FMemory_Alloca_Aligned( ElementProp->GetSize(), ElementProp->GetMinAlignment() );
-                ElementProp->InitializeValue_InContainer( TempElement );
 
                 // add items
 
                 for( std::size_t Index = 0; Index < Node.size(); ++Index )
                 {
                     // parse value into the temporary element
+                    ElementProp->InitializeValue_InContainer( TempElement );
                     SetProperty( TempElement, ElementProp, Node[ Index ] );
 
                     // add temporary element into the set (will only add if does not already exist)
