@@ -1,8 +1,8 @@
 # YamlDataAsset
 
-A plugin for the Unreal Editor that allows you to convert between UDataAssets YAML files.
+A plugin for the Unreal Editor that allows you to convert between UDataAssets YAML and files.
 
-This makes it easier to work with custom data from external sources.
+This makes it easier to swap between Unreal and external data sources.
 
 ## Installation
 
@@ -59,13 +59,13 @@ SomeNumbers:
   - 42
 ```
 
-The plugin uses the Unreal reflection system walk the properties and set the values. It is recursive, so it will work with nested structures and compound types.
+The plugin uses the Unreal reflection system walk the properties and set the values. It is recursive, so it will work with nested structures, collections and compound types.
 
 ## Notes
 
 ### __uclass
 
-You can put `__uclass` property at the top of the file, to let the plugin know the class to use. If it exists it will not bring up the dialog box to choose from. For example:
+You can put a `__uclass` property at the top of the file to let the plugin know the class to use. If the UDataAsset exists then it will skip the dialog box. For example:
 
 ```yaml
 __uclass: MyDataAsset
@@ -81,4 +81,4 @@ SomeNumbers:
 
 ### Compound Keys
 
-
+`TMap`'s with a compound keys (structs as keys) is not supported. Whilst this is allowed in Unreal, JSON (and therefore YAML) only allow value types in the file format (this is a JavaScript limitation).
