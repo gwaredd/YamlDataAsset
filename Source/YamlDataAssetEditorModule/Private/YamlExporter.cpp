@@ -72,7 +72,7 @@ void ReflectProperty( void* Address, FProperty* Property, YAML::Emitter& out )
         {
             Value.Reset();
             Map->KeyProp->ExportTextItem_Direct( Value, MapHelper.GetKeyPtr( Index ), nullptr, nullptr, PPF_None );
-        	out << YAML::Key << YamlStr( Value );
+            out << YAML::Key << YamlStr( Value ) << YAML::Value;
 
             ReflectProperty( MapHelper.GetValuePtr( Index ), Map->ValueProp, out );
         }
