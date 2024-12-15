@@ -153,10 +153,9 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 
                     // add temporary element into the set (will only add if does not already exist)
                     SetHelper.AddElement( TempElement );
-                }
 
-                // free temporary element
-                ElementProp->DestroyValue_InContainer( TempElement );
+                    ElementProp->DestroyValue_InContainer( TempElement );
+                }
             }
         }
         break;
