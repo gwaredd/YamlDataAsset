@@ -81,4 +81,4 @@ SomeNumbers:
 
 ### Compound Keys
 
-`TMap`'s with a compound keys (structs as keys) is not supported. Whilst this is allowed in Unreal, JSON (and therefore YAML) only allow value types in the file format (this is a JavaScript limitation).
+A `TMap`'s with a compound key type (i.e. using a struct as a key) is not supported. Whilst this is allowed in Unreal, JSON (and therefore YAML) only allow value types in the file format (this is a JavaScript limitation).
