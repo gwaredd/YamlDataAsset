@@ -9,6 +9,7 @@
 
 #define LOCTEXT_NAMESPACE "YamlImportFactory"
 
+
 //-------------------------------------------------------------------------------------------------
 
 static constexpr uint64 ScalarTypes =
@@ -76,7 +77,7 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
 
     switch( NodeType )
     {
-        // null: clear property
+        // NodeType::Null -> clear property
 
         case YAML::NodeType::Undefined:
         case YAML::NodeType::Null:
@@ -86,7 +87,7 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
         break;
 
 
-        // scalar value: set property by string
+        // NodeType::Scalar -> value type
 
         case YAML::NodeType::Scalar:
         {
@@ -103,7 +104,7 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
         }
         break;
 
-        // array types: TArray or a TSet
+        // NodeType::Sequence -> TArray or a TSet
 
         case YAML::NodeType::Sequence:
         {
@@ -143,7 +144,7 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
         break;
 
 
-        // object types - so either a struct or a TMap
+        // NodeType::Map -> UStruct or TMap
 
         case YAML::NodeType::Map:
         {
@@ -169,6 +170,9 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
             else if( auto MapProperty = CastField<FMapProperty>( Property ) )
             {
                 auto Memory = Property->ContainerPtrToValuePtr<uint8>( Container );
+
+                //PointerToValuePtr
+
                 FScriptMapHelper MapHelper( MapProperty, Memory );
 
                 MapHelper.EmptyValues();
@@ -176,7 +180,7 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
                 for( const auto& Child : Node )
                 {
                     auto Index = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
-                    SetProperty( MapHelper.GetKeyPtr( Index ), MapProperty->KeyProp, Child.first, EPropertyPointerType::Direct );
+                    SetProperty( MapHelper.GetKeyPtr( Index ),   MapProperty->KeyProp,   Child.first,  EPropertyPointerType::Direct );
                     SetProperty( MapHelper.GetValuePtr( Index ), MapProperty->ValueProp, Child.second, EPropertyPointerType::Direct );
                 }
 
@@ -202,7 +206,13 @@ static UObject* ProcessObject( UObject* Object, YAML::Node Node )
 
     for( const auto& Child : Node )
     {
-        auto  Key       = FName( Child.first.as<std::string>().c_str() );
+        auto Key = FName( Child.first.as<std::string>().c_str() );
+
+        if( Key == FName( "__uclass" ) )
+        {
+            continue;
+        }
+
         auto  Property  = Class->FindPropertyByName( Key );
 
         if( !Property )
@@ -228,14 +238,11 @@ UYamlImportFactory::UYamlImportFactory( const FObjectInitializer& ObjectInitiali
     bEditorImport  = true;
 }
 
-
 //-------------------------------------------------------------------------------------------------
 
-bool UYamlImportFactory::SelectClass( bool& bOutOperationCanceled )
+void UYamlImportFactory::GetDataAssets( FName FindClass )
 {
-    //GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPreImport( this, InClass, InParent, InName, Type );
-
-    bOutOperationCanceled = false;
+    SelectedClass = nullptr;
 
     // get list of UDataAsset's
 
@@ -258,13 +265,23 @@ bool UYamlImportFactory::SelectClass( bool& bOutOperationCanceled )
             continue;
         }
 
+        if( Class->GetFName() == FindClass )
+        {
+            SelectedClass = Class;
+        }
+
         Classes.Add( Class );
     }
 
-    if( Classes.Num() > 0 )
-    {
-        SelectedClass = Classes[ 0 ];
-    }
+    Classes.Sort( []( UClass& A, UClass& B ) { return A.GetFName().Compare( B.GetFName() ) < 0; } );
+}
+    
+
+//-------------------------------------------------------------------------------------------------
+
+bool UYamlImportFactory::SelectClassModal( bool& bOutOperationCanceled )
+{
+    bOutOperationCanceled = false;
 
     // select custom asset
 
@@ -286,7 +303,7 @@ bool UYamlImportFactory::SelectClass( bool& bOutOperationCanceled )
                                 .OnSelectionChanged_Lambda( [this]( UClass* In, ESelectInfo::Type Type ) { SelectedClass = In; } )
                                 [
                                     SNew( STextBlock )
-                                        .Text_Lambda( [this]() { return FText::FromName( SelectedClass->GetFName() ); } )
+                                        .Text_Lambda( [this]() { return FText::FromName( SelectedClass ? SelectedClass->GetFName() : FName() ); } )
                                 ]
                         ]
 
@@ -350,13 +367,6 @@ bool UYamlImportFactory::SelectClass( bool& bOutOperationCanceled )
 
 UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled )
 {
-    //GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPreImport( this, InClass, InParent, InName, Type );
-
-    if( !SelectClass( bOutOperationCanceled ) )
-    {
-        return nullptr;
-    }
-
     // load file
 
     FString FileContents;
@@ -376,7 +386,7 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
         auto Buffer = StringCast<UTF8CHAR>( *FileContents, FileContents.Len() );
         Node = YAML::Load( (const char*) Buffer.Get() );
     }
-    catch(...)
+    catch( ... )
     {
         UE_LOG( LogYamlAssetImporter, Error, TEXT( "Failed to parse %s" ), *Filename );
         return nullptr;
@@ -387,6 +397,26 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
         UE_LOG( LogYamlAssetImporter, Error, TEXT( "Failed to load %s, expected object as the root" ), *Filename );
         return nullptr;
     }
+
+    // get all data assets
+
+    FName FindClass;
+
+    if( Node[ "__uclass" ] )
+    {
+        FindClass = FName( Node[ "__uclass" ].as<std::string>().c_str() );
+    }
+
+    GetDataAssets( FindClass );
+
+    if( !SelectedClass )
+    {
+        if( !SelectClassModal( bOutOperationCanceled ) )
+        {
+            return nullptr;
+        }
+    }
+
 
     // create asset
 

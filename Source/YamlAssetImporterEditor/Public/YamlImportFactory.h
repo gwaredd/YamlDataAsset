@@ -18,7 +18,9 @@ public:
 
 protected:
 
-    bool SelectClass( bool& bOutOperationCanceled );
+    bool SelectClassModal( bool& bOutOperationCanceled );
+    void GetDataAssets( FName FindClass );
+
 
     TSharedPtr<SWindow> Modal;
     TArray<UClass*>     Classes;
