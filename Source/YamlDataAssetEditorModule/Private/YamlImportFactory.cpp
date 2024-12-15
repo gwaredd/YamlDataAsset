@@ -142,7 +142,7 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 
                 auto ElementProp = SetHelper.ElementProp;
                 auto TempElement = (uint8*) FMemory_Alloca_Aligned( ElementProp->GetSize(), ElementProp->GetMinAlignment() );
-                FMemory::Memzero( TempElement, ElementProp->GetSize() );
+                ElementProp->InitializeValue_InContainer( TempElement );
 
                 // add items
 
