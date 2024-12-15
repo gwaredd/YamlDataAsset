@@ -113,7 +113,14 @@ bool UYamlExporter::ExportText( const FExportObjectInnerContext* Context, UObjec
 
     for( TFieldIterator<FProperty> Field( Object->GetClass() ); Field; ++Field )
     {
-        out << YAML::Key << YamlStr( Field->GetFName() ) << YAML::Value;
+        auto Key = Field->GetFName();
+        
+        if( Key == FName( "NativeClass" ) )
+        {
+            continue;
+        }
+
+        out << YAML::Key << YamlStr( Key ) << YAML::Value;
         auto Address = Field->ContainerPtrToValuePtr<uint8>( Object );
         ReflectProperty( Address, *Field, out );
     }
