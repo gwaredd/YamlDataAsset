@@ -181,8 +181,8 @@ class EmitterState {
       }
 
       // can't get here
-      assert(false);
-      return EmitterNodeType::NoType;
+      //assert(false);
+      //return EmitterNodeType::NoType;
     }
   };
 

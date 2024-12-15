@@ -1,7 +1,7 @@
 // Copyright (C) 2024 Gwaredd Mountain - All Rights Reserved.
 
 #include "YamlImportFactory.h"
-#include "YamlAssetImporterEditor.h"
+#include "YamlDataAssetEditorModule.h"
 #include "Engine/DataAsset.h"
 #include "Interfaces/IMainFrameModule.h"
 #include "Editor.h"
@@ -75,7 +75,7 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 
     if( ( Property->GetCastFlags() & GetSupportedPropertyTypeFlags( NodeType ) ) == 0 )
     {
-        UE_LOG( LogYamlAssetImporter, Warning, TEXT( "Property: %s - can't convert from yaml:%hs to %s" ),
+        UE_LOG( LogYamlDataAsset, Warning, TEXT( "Property: %s - can't convert from yaml:%hs to %s" ),
             *Property->GetFName().ToString(),
             GetNodeTypeName( Node.Type() ),
             *Property->GetClass()->GetFName().ToString()
@@ -183,7 +183,7 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
                     }
                     else
                     {
-                        UE_LOG( LogYamlAssetImporter, Warning, TEXT( "Failed to find property %s in %s" ), *Key.ToString(), *StructClass->GetFName().ToString() );
+                        UE_LOG( LogYamlDataAsset, Warning, TEXT( "Failed to find property %s in %s" ), *Key.ToString(), *StructClass->GetFName().ToString() );
                     }
                 }
             }
@@ -212,7 +212,7 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 
         default:
         {
-            UE_LOG( LogYamlAssetImporter, Error, TEXT( "Unknown YAML node type!!!" ) );
+            UE_LOG( LogYamlDataAsset, Error, TEXT( "Unknown YAML node type!!!" ) );
             return false;
         }
     }
@@ -245,7 +245,7 @@ static UObject* ProcessObject( UObject* Asset, YAML::Node Node )
 
         if( !Property )
         {
-            UE_LOG( LogYamlAssetImporter, Warning, TEXT( "Failed to find property %s in %s" ), *Key.ToString(), *Class->GetFName().ToString() );
+            UE_LOG( LogYamlDataAsset, Warning, TEXT( "Failed to find property %s in %s" ), *Key.ToString(), *Class->GetFName().ToString() );
             continue;
         }
 
@@ -407,7 +407,7 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
 
     if( !FFileHelper::LoadFileToString( FileContents, *Filename ) )
     {
-        UE_LOG( LogYamlAssetImporter, Error, TEXT( "Failed to load %s" ), *Filename );
+        UE_LOG( LogYamlDataAsset, Error, TEXT( "Failed to load %s" ), *Filename );
         return nullptr;
     }
 
@@ -422,13 +422,13 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
     }
     catch( ... )
     {
-        UE_LOG( LogYamlAssetImporter, Error, TEXT( "Failed to parse %s" ), *Filename );
+        UE_LOG( LogYamlDataAsset, Error, TEXT( "Failed to parse %s" ), *Filename );
         return nullptr;
     }
 
     if( Doc.Type() != YAML::NodeType::Map )
     {
-        UE_LOG( LogYamlAssetImporter, Error, TEXT( "Failed to load %s, expected object as the root" ), *Filename );
+        UE_LOG( LogYamlDataAsset, Error, TEXT( "Failed to load %s, expected object as the root" ), *Filename );
         return nullptr;
     }
 
@@ -450,7 +450,7 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
 
     if( !Asset )
     {
-        UE_LOG( LogYamlAssetImporter, Error, TEXT( "Failed to create %s asset" ), *SelectedClass->GetFName().ToString() );
+        UE_LOG( LogYamlDataAsset, Error, TEXT( "Failed to create %s asset" ), *SelectedClass->GetFName().ToString() );
         return nullptr;
     }
 

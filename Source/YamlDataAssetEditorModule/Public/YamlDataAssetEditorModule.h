@@ -5,9 +5,9 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-DECLARE_LOG_CATEGORY_EXTERN( LogYamlAssetImporter, Log, All );
+DECLARE_LOG_CATEGORY_EXTERN( LogYamlDataAsset, Log, All );
 
-class FYamlAssetImporterEditor : public IModuleInterface
+class FYamlDataAssetEditorModule : public IModuleInterface
 {
 public:
 	virtual void StartupModule() override;
