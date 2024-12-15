@@ -11,6 +11,7 @@
 
 
 //-------------------------------------------------------------------------------------------------
+// helper functions
 
 static constexpr uint64 ScalarTypes =
     CASTCLASS_FBoolProperty |
@@ -27,6 +28,8 @@ static constexpr uint64 ScalarTypes =
     CASTCLASS_FSoftObjectProperty |
     CASTCLASS_FSoftClassProperty;
 
+// map YAML::NodeType to supported FProperty types
+
 static uint64 GetSupportedPropertyTypeFlags( YAML::NodeType::value Type )
 {
     switch( Type )
@@ -39,6 +42,8 @@ static uint64 GetSupportedPropertyTypeFlags( YAML::NodeType::value Type )
         default:                        return 0;
     }
 }
+
+// YAML::NodeType to string for error logging
 
 static const char* GetNodeTypeName( YAML::NodeType::value Type )
 {
@@ -55,8 +60,14 @@ static const char* GetNodeTypeName( YAML::NodeType::value Type )
 
 
 //-------------------------------------------------------------------------------------------------
+// Set the value of a given property from the Yaml
+// 
+// Address : memory address of the value (this is "direct", we need to resolve the property address from the container before calling)
+// Property: property reflection data
+// Node    : yaml node to use to populate the value
+//
 
-static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, EPropertyPointerType PointerType )
+static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 {
     auto NodeType = Node.Type();
 
@@ -73,7 +84,7 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
         return false;
     }
 
-    // handle YAML::Node
+    // set value from yaml
 
     switch( NodeType )
     {
@@ -82,60 +93,63 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
         case YAML::NodeType::Undefined:
         case YAML::NodeType::Null:
         {
-            Property->ClearValue_InContainer( Container );
+            Property->ClearValue( Address );
         }
         break;
 
 
-        // NodeType::Scalar -> value type
+        // NodeType::Scalar -> FProperty value type
 
         case YAML::NodeType::Scalar:
         {
             auto Value = StringCast<TCHAR>( Node.as<std::string>().c_str() ).Get();
-
-            if( PointerType == EPropertyPointerType::Container )
-            {
-                Property->ImportText_InContainer( Value, Container, nullptr, PPF_None );
-            }
-            else
-            {
-                Property->ImportText_Direct( Value, Container, nullptr, PPF_None );
-            }
+            Property->ImportText_Direct( Value, Address, nullptr, PPF_None );
         }
         break;
 
-        // NodeType::Sequence -> TArray or a TSet
+
+        // NodeType::Sequence[] -> TArray or a TSet
 
         case YAML::NodeType::Sequence:
         {
-            auto Memory = Property->ContainerPtrToValuePtr<uint8>( Container );
+            // FArrayProperty
 
-            if( auto ArrayProperty = CastField<FArrayProperty>( Property ) )
+            if( auto ArrayField = CastField<FArrayProperty>( Property ) )
             {
-                FScriptArrayHelper ArrayHelper( ArrayProperty, Memory );
+                // create empty array of required size
 
+                FScriptArrayHelper ArrayHelper( ArrayField, Address );
                 ArrayHelper.Resize( Node.size() );
+
+                // set value of each element
 
                 for( std::size_t Index = 0; Index < Node.size(); ++Index )
                 {
-                    auto ElementNode = Node[ Index ];
-                    auto ElementMemory = ArrayHelper.GetElementPtr( Index );
-
-                    SetProperty( ElementMemory, ArrayProperty->Inner, ElementNode, EPropertyPointerType::Container );
+                    SetProperty( ArrayHelper.GetElementPtr( Index ), ArrayField->Inner, Node[ Index ] );
                 }
             }
-            else if( auto SetPropertyPtr = CastField<FSetProperty>( Property ) )
+
+            // FSetProperty
+
+            else if( auto SetField = CastField<FSetProperty>( Property ) )
             {
-                FScriptSetHelper SetHelper( SetPropertyPtr, Memory );
+                // create empty set
+
+                FScriptSetHelper SetHelper( SetField, Address );
                 SetHelper.EmptyElements();
 
-                auto ElementProperty = SetHelper.GetElementProperty();
+                // BUG: this can create duplicate items and therefore is an invalidate set
+                // solution may be to create a dummy entry, populate that and use that as a way to
+                // check existence, then remove it at the end. Bit pants but should theorectically work!
+
+                // add items
 
                 for( std::size_t Index = 0; Index < Node.size(); ++Index )
                 {
                     auto ElementIndex = SetHelper.AddDefaultValue_Invalid_NeedsRehash();
-                    auto Addr = SetHelper.GetElementPtr( ElementIndex );
-                    SetProperty( Addr, ElementProperty, Node[ Index ], EPropertyPointerType::Direct );
+                    auto ElementAddr  = SetHelper.GetElementPtr( ElementIndex );
+
+                    SetProperty( ElementAddr, SetField->ElementProp, Node[ Index ] );
                 }
 
                 SetHelper.Rehash();
@@ -144,44 +158,44 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
         break;
 
 
-        // NodeType::Map -> UStruct or TMap
+        // NodeType::Map{} -> UStruct or TMap
 
         case YAML::NodeType::Map:
         {
+            // FStructProperty
+
             if( auto StructProperty = CastField<FStructProperty>( Property ) )
             {
                 auto StructClass = StructProperty->Struct;
-                auto Addr        = StructProperty->ContainerPtrToValuePtr<uint8>( Container );
 
                 for( const auto& Child : Node )
                 {
-                    auto  Key   = FName ( Child.first.as<std::string>().c_str() );
-                    auto  Field = StructClass->FindPropertyByName( Key );
+                    auto Key = FName ( Child.first.as<std::string>().c_str() );
 
-                    if( !Field )
+                    if( auto FieldProperty = StructClass->FindPropertyByName( Key ) )
+                    {
+                        auto FieldAddress = FieldProperty->ContainerPtrToValuePtr<uint8>( Address );
+                        SetProperty( FieldAddress, FieldProperty, Child.second );
+                    }
+                    else
                     {
                         UE_LOG( LogYamlAssetImporter, Warning, TEXT( "Failed to find property %s in %s" ), *Key.ToString(), *StructClass->GetFName().ToString() );
-                        continue;
                     }
-
-                    SetProperty( Addr, Field, Child.second, PointerType );
                 }
             }
+
+            // FMapProperty
+
             else if( auto MapProperty = CastField<FMapProperty>( Property ) )
             {
-                auto Memory = Property->ContainerPtrToValuePtr<uint8>( Container );
-
-                //PointerToValuePtr
-
-                FScriptMapHelper MapHelper( MapProperty, Memory );
-
+                FScriptMapHelper MapHelper( MapProperty, Address );
                 MapHelper.EmptyValues();
 
                 for( const auto& Child : Node )
                 {
-                    auto Index = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
-                    SetProperty( MapHelper.GetKeyPtr( Index ),   MapProperty->KeyProp,   Child.first,  EPropertyPointerType::Direct );
-                    SetProperty( MapHelper.GetValuePtr( Index ), MapProperty->ValueProp, Child.second, EPropertyPointerType::Direct );
+                    auto MapIndex = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
+                    SetProperty( MapHelper.GetKeyPtr( MapIndex ),   MapProperty->KeyProp,   Child.first  );
+                    SetProperty( MapHelper.GetValuePtr( MapIndex ), MapProperty->ValueProp, Child.second );
                 }
 
                 MapHelper.Rehash();
@@ -189,8 +203,12 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
         }
         break;
 
+
+        // unknown type - shouldn't never (happen unless yaml one day adds something new or there is some egregious memory trample)!
+
         default:
         {
+            UE_LOG( LogYamlAssetImporter, Error, TEXT( "Unknown YAML node type!!!" ) );
             return false;
         }
     }
@@ -198,22 +216,28 @@ static bool SetProperty( void* Container, FProperty* Property, YAML::Node Node, 
     return true;
 }
 
-//-------------------------------------------------------------------------------------------------
 
-static UObject* ProcessObject( UObject* Object, YAML::Node Node )
+//-------------------------------------------------------------------------------------------------
+// fill in fields from given asset
+
+static UObject* ProcessObject( UObject* Asset, YAML::Node Node )
 {
-    auto Class = Object->GetClass();
+    auto Class = Asset->GetClass();
 
     for( const auto& Child : Node )
     {
         auto Key = FName( Child.first.as<std::string>().c_str() );
+
+        // ignore class specifier
 
         if( Key == FName( "__uclass" ) )
         {
             continue;
         }
 
-        auto  Property  = Class->FindPropertyByName( Key );
+        // look for named property in the asset
+
+        auto Property = Class->FindPropertyByName( Key );
 
         if( !Property )
         {
@@ -221,10 +245,13 @@ static UObject* ProcessObject( UObject* Object, YAML::Node Node )
             continue;
         }
 
-        SetProperty( Object, Property, Child.second, EPropertyPointerType::Container );
+        // set value
+
+        auto Address = Property->ContainerPtrToValuePtr<uint8>( Asset );
+        SetProperty( Address, Property, Child.second );
     }
 
-    return Object;
+    return Asset;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -238,7 +265,9 @@ UYamlImportFactory::UYamlImportFactory( const FObjectInitializer& ObjectInitiali
     bEditorImport  = true;
 }
 
+
 //-------------------------------------------------------------------------------------------------
+// get list of all registered UDataAsset's and select the given one if specified
 
 void UYamlImportFactory::GetDataAssets( FName FindClass )
 {
@@ -278,6 +307,7 @@ void UYamlImportFactory::GetDataAssets( FName FindClass )
     
 
 //-------------------------------------------------------------------------------------------------
+// get user to select a UDataAsset to use from the ones registered
 
 bool UYamlImportFactory::SelectClassModal( bool& bOutOperationCanceled )
 {
@@ -379,12 +409,12 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
 
     // parse YAML
 
-    YAML::Node Node;
+    YAML::Node Doc;
 
     try
     {
-        auto Buffer = StringCast<UTF8CHAR>( *FileContents, FileContents.Len() );
-        Node = YAML::Load( (const char*) Buffer.Get() );
+        auto Buffer = StringCast<UTF8CHAR>( *FileContents, FileContents.Len() ); // yamp-cpp requires utf-8
+        Doc = YAML::Load( (const char*) Buffer.Get() );
     }
     catch( ... )
     {
@@ -392,33 +422,25 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
         return nullptr;
     }
 
-    if( Node.Type() != YAML::NodeType::Map )
+    if( Doc.Type() != YAML::NodeType::Map )
     {
         UE_LOG( LogYamlAssetImporter, Error, TEXT( "Failed to load %s, expected object as the root" ), *Filename );
         return nullptr;
     }
 
-    // get all data assets
+    // get all registered UDataAsset's and look for the one set in this file (if specifed)
 
-    FName FindClass;
-
-    if( Node[ "__uclass" ] )
-    {
-        FindClass = FName( Node[ "__uclass" ].as<std::string>().c_str() );
-    }
-
+    FName FindClass = Doc[ "__uclass" ] ? FName( Doc[ "__uclass" ].as<std::string>().c_str() ) : FName();
     GetDataAssets( FindClass );
 
-    if( !SelectedClass )
+    // if we didn't find the __uclass (or none specified) then get the user to choose one
+
+    if( !SelectedClass && !SelectClassModal( bOutOperationCanceled ) )
     {
-        if( !SelectClassModal( bOutOperationCanceled ) )
-        {
-            return nullptr;
-        }
+        return nullptr;
     }
 
-
-    // create asset
+    // create the asset
 
     auto Asset = NewObject<UDataAsset>( InParent, SelectedClass, InName, Flags);
 
@@ -428,9 +450,9 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
         return nullptr;
     }
 
-    // fill fields and return asset
+    // fill in the fields from yaml
 
-    return ProcessObject( Asset, Node );
+    return ProcessObject( Asset, Doc );
 }
 
 
