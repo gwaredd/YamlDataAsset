@@ -1,6 +1,6 @@
 # YamlDataAsset
 
-A plugin for the Unreal Editor that allows you to convert between UDataAssets YAML and files.
+A plugin for the Unreal Editor that allows you to convert between UDataAssets and YAML files.
 
 This makes it easier to swap between Unreal and external data sources.
 
