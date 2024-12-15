@@ -59,7 +59,7 @@ SomeNumbers:
   - 42
 ```
 
-The plugin uses the Unreal reflection system walk the properties and set the values. It is recursive, so it will work with nested structures, collections and compound types.
+The plugin uses the Unreal reflection system walk the properties and set the values. It is recursive, so it will work with nested structures, collections and compound types. Property names are case-insensitive.
 
 ## Notes
 
