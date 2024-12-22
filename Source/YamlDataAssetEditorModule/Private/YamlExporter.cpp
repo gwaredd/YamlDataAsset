@@ -9,7 +9,13 @@
 
 std::string YamlStr( const FString& Str )
 {
-    return Str.IsEmpty() ? "" : reinterpret_cast<const char*>( StringCast<UTF8CHAR>(Str.GetCharArray().GetData()).Get() );
+    if( Str.IsEmpty() )
+    {
+        return "";
+    }
+
+    auto String = StringCast<UTF8CHAR>( Str.GetCharArray().GetData() );
+    return std::string( (char*) String.Get(), String.Length() );
 }
 
 std::string YamlStr( const FName Name )

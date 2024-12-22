@@ -102,8 +102,9 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
 
         case YAML::NodeType::Scalar:
         {
-            auto Value = StringCast<TCHAR>( Node.as<std::string>().c_str() ).Get();
-            Property->ImportText_Direct( Value, Address, nullptr, PPF_None );
+            auto ValuePtr = StringCast<TCHAR>( Node.as<std::string>().c_str() );
+            FString Value( ValuePtr.Get(), ValuePtr.Length() );
+            Property->ImportText_Direct( Value.GetCharArray().GetData(), Address, nullptr, PPF_None);
         }
         break;
 
@@ -416,7 +417,8 @@ UObject* UYamlImportFactory::FactoryCreateFile( UClass* InClass, UObject* InPare
 
     try
     {
-        std::string Buffer = reinterpret_cast<const char*>( StringCast<UTF8CHAR>( FileContents.GetCharArray().GetData() ).Get() );
+        auto Contents = StringCast<UTF8CHAR>( FileContents.GetCharArray().GetData() );
+        std::string Buffer( (char*) Contents.Get(), Contents.Length() );
         Doc = YAML::Load( Buffer );
     }
     catch( ... )
