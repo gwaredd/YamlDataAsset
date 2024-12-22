@@ -103,7 +103,7 @@ static bool SetProperty( void* Address, FProperty* Property, YAML::Node Node )
         case YAML::NodeType::Scalar:
         {
             auto ValuePtr = StringCast<TCHAR>( Node.as<std::string>().c_str() );
-            FString Value( ValuePtr.Get(), ValuePtr.Length() );
+            FString Value( ValuePtr.Length(), ValuePtr.Get() );
             Property->ImportText_Direct( Value.GetCharArray().GetData(), Address, nullptr, PPF_None);
         }
         break;
