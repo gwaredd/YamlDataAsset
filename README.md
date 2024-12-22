@@ -79,6 +79,23 @@ SomeNumbers:
   - 42
 ```
 
+### Asset References
+
+You can set pointers to assets by setting the reference as a string in the yaml (right click on the asset in the content browser and select `Copy Reference`).
+
+For example:
+
+```c++
+UPROPERTY( EditAnywhere )
+TWeakObjectPtr<UObject> MyAssetReference;
+};
+```
+
+```yaml
+MyAssetReference: /Script/MyProject.MyDataAsset'/Game/Assets/MyDataAsset.MyDataAsset'
+```
+
+
 ### Compound Keys
 
 A `TMap` with a compound key type (a struct as a key, e.g. `TMap<FMyCustomKey,FString>`) is not supported. Whilst this is allowed in Unreal, JSON (and therefore YAML) only allow value types for keys (this is a JavaScript limitation).
