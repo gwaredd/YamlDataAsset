@@ -98,4 +98,4 @@ MyAssetReference: /Script/MyProject.MyDataAsset'/Game/Assets/MyDataAsset.MyDataA
 
 ### Compound Keys
 
-A `TMap` with a compound key type (a struct as a key, e.g. `TMap<FMyCustomKey,FString>`) is not supported. Whilst this is allowed in Unreal, JSON (and therefore YAML) only allow value types for keys (this is a JavaScript limitation).
+A `TMap` with a compound key type (a struct as a key, e.g. `TMap<FMyCustomKey,FString>`) is not supported. Whilst this is allowed in Unreal, JSON (and therefore YAML) only allows strings for keys (this is a JavaScript limitation). Note that value types will be automatically converted.
